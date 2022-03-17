@@ -3,7 +3,9 @@
 import asyncio
 import itertools
 import json
+import os
 import secrets
+import signal
 import websockets
 
 from connect4 import Connect4, PLAYER1, PLAYER2
@@ -122,31 +124,18 @@ async def handler(websocket):
         await watch(websocket, event["watch"])
     else:
         await init(websocket)
-
-    
-
-    while True:
-        async for message in websocket:
-            event = json.loads(message)
-            if event['type'] == 'play':
-                # pick player
-                try:
-                    row = game.play(player, event['column'])
-                except RuntimeError as e:
-                    await websocket.send(json.dumps({"type": "error", "message": str(e)}))
-                    continue
-
-                await websocket.send(json.dumps({"type": "play", "player": player, "column": event['column'], "row": row}))
-
-                if game.winner is not None:
-                    await websocket.send(json.dumps({"type": "win", "player": game.winner}))
-
-                player = next(turns)
                         
 
 async def main():
-    async with websockets.serve(handler, "", 8001):
-        await asyncio.Future()  # run forever
+
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+    loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
+
+    port = int(os.environ.get('PORT', "8001"))
+
+    async with websockets.serve(handler, "", port):
+        await stop
 
 
 if __name__ == "__main__":
